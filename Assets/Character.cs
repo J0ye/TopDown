@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System.Linq;
 
 [RequireComponent(typeof(CharacterController))]
 public class Character : MonoBehaviour
@@ -8,28 +9,32 @@ public class Character : MonoBehaviour
     public float speed = 5f; // Speed modifier
     public Transform target; // Target GameObject to rotate towards 
     public Vector3 rotationOffset; // Offset for the look rotation
-    public Material targetMaterial;
-    public int numSegments = 20; // Number of segments around the base
-    public float height = 5f;    // Height of the cone
-    public float radius = 2f;  
+    [Header("Comabt")]
+    public GameObject projectilePrefab;
+    public string targetTag = "Target"; // Tag to filter objects
+    public float detectionRange = 2f;
+    public float projectileRotOffset;
     private CharacterController controller; // Character Controller component
-    private MeshFilter meshFilter; // MeshFilter component for the cone
-    private MeshRenderer meshRenderer;
-
+    private List<GameObject> objectsInRange = new List<GameObject>(); // List to store objects in range
+    
+    private LineRenderer lineRenderer;
 
     void Start()
     {
         controller = GetComponent<CharacterController>(); // Initialize the Character Controller
-        meshFilter = gameObject.AddComponent<MeshFilter>();
+        /*meshFilter = gameObject.AddComponent<MeshFilter>();
         meshRenderer = gameObject.AddComponent<MeshRenderer>();
         meshRenderer.material = targetMaterial; // Assign the target material to the mesh renderer
-        CreateConeMesh();
+        CreateConeMesh();*/
 
         transform.position = new Vector3(transform.position.x, transform.position.y, -1); // Set origin Z to -1
         if (target != null)
         {
             target.position = new Vector3(target.position.x, target.position.y, -1); // Set target Z to -1
         }
+        lineRenderer = gameObject.GetComponent<LineRenderer>(); // Initialize Line Renderer
+        lineRenderer.positionCount = 2; // Set the number of positions
+        
     }
 
     void Update()
@@ -54,14 +59,47 @@ public class Character : MonoBehaviour
                 float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg + rotationOffset.z; // Get angle in degrees
                 Quaternion lookRotation = Quaternion.Euler(0, 0, angle); // Create rotation only on Z-axis
                 transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * speed); // Smoothly rotate towards target
-            }            
+            }
         }
+
+        if (Input.GetKeyDown(KeyCode.Mouse0))
+        {
+            PropelProjectile();
+        }
+
+        /*
         else
         {
              meshFilter.mesh = null;
-        }
+        }*/
+        DrawLineToNearestTarget();
+        CheckForObjectsInRange();
     }
 
+    void PropelProjectile()
+    {
+        if (objectsInRange.Count > 0) // Check if there are objects in range
+        {
+            GameObject nearestObject = objectsInRange.OrderBy(obj => Vector3.Distance(transform.position, obj.transform.position)).First(); // Find the nearest object
+            GameObject projectile = Instantiate(projectilePrefab, transform.position, Quaternion.identity); // Instantiate the projectile at the character's position
+
+            // Calculate direction to the nearest object
+            Vector3 direction = (nearestObject.transform.position - transform.position).normalized;
+
+            // Calculate the angle to rotate only on the Z-axis with an offset of 90 degrees
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg + projectileRotOffset; // Get angle in degrees with offset
+            projectile.transform.rotation = Quaternion.Euler(0, 0, angle); // Set the rotation of the projectile
+
+            Rigidbody2D rb = projectile.GetComponent<Rigidbody2D>(); // Add Rigidbody2D to the projectile
+            rb.velocity = direction * 10f; // Propel the projectile towards the nearest object
+
+            // Ignore collision between the character and the projectile
+            //Physics2D.IgnoreCollision(projectile.GetComponent<Collider2D>(), GetComponent<Collider2D>());
+
+            Destroy(projectile, 1f); // Destroy the projectile after 3 seconds
+        }
+    }
+    /*
     void CreateConeMesh()
     {
         Mesh mesh = new Mesh();
@@ -108,6 +146,43 @@ public class Character : MonoBehaviour
 
         // Assign the mesh to the MeshFilter
         meshFilter.mesh = mesh;
+    }*/
+    void DrawLineToNearestTarget()
+    {
+        if (objectsInRange.Count > 0) // Check if there are objects in range
+        {
+            GameObject nearestObject = objectsInRange.OrderBy(obj => Vector3.Distance(transform.position, obj.transform.position)).First(); // Find the nearest object
+            lineRenderer.SetPosition(0, transform.position); // Set the start position of the line
+            lineRenderer.SetPosition(1, nearestObject.transform.position); // Set the end position of the line
+        }
+        else
+        {
+            lineRenderer.SetPosition(0, transform.position); // Set start position
+            lineRenderer.SetPosition(1, transform.position); // Set end position to hide the line
+        }
+    }
+    void CheckForObjectsInRange()
+    {
+        // Clear the list before checking
+        objectsInRange.Clear();
+
+        // Find all objects with the specified tag
+        GameObject[] allObjects = GameObject.FindGameObjectsWithTag(targetTag);
+        foreach (GameObject obj in allObjects)
+        {
+            // Calculate distance to the object
+            float distance = Vector3.Distance(transform.position, obj.transform.position);
+            if (distance <= detectionRange)
+            {
+                objectsInRange.Add(obj); // Add to the list if within range
+            }
+        }
     }
 
+    void OnDrawGizmos()
+    {
+        // Draw a circle to visualize the detection range
+        Gizmos.color = Color.red; // Set the color for the Gizmo
+        Gizmos.DrawWireSphere(transform.position, detectionRange); // Draw the wire sphere
+    }
 }
