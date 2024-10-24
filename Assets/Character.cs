@@ -7,8 +7,22 @@ using System.Linq;
 public class Character : MonoBehaviour
 {
     public float speed = 5f; // Speed modifier
-    public Transform target; // Target GameObject to rotate towards 
+    public Transform target; // Crosshair
     public Vector3 rotationOffset; // Offset for the look rotation
+    public bool castLineToTarget = false;
+    [Header("Arms")]
+    public GameObject arm1;
+    public GameObject arm2; 
+    [Tooltip("Rotation offset for arm1")]
+    public Vector3 arm1RotationOffset;
+    [Tooltip("Rotation offset for arm2")]
+    public Vector3 arm2RotationOffset; 
+    [Range(0.1f, 100f)]
+    [Tooltip("Speed of rotation for arm1")]
+    public float arm1RotationSpeed = 5f;
+    [Range(0.1f, 100f)]
+    [Tooltip("Speed of rotation for arm2")]
+    public float arm2RotationSpeed = 5f;
     [Header("Comabt")]
     public GameObject projectilePrefab;
     public string targetTag = "Target"; // Tag to filter objects
@@ -18,6 +32,8 @@ public class Character : MonoBehaviour
     private List<GameObject> objectsInRange = new List<GameObject>(); // List to store objects in range
     
     private LineRenderer lineRenderer;
+    private GameObject nearestObject;
+    private GameObject secondNearestObject;
 
     void Start()
     {
@@ -72,8 +88,12 @@ public class Character : MonoBehaviour
         {
              meshFilter.mesh = null;
         }*/
-        DrawLineToNearestTarget();
+        if (castLineToTarget) // Check if line renderer is enabled
+        {
+            DrawLineToNearestTarget();
+        }
         CheckForObjectsInRange();
+        RotateArmsTowardsObjects();
     }
 
     void PropelProjectile()
@@ -147,6 +167,33 @@ public class Character : MonoBehaviour
         // Assign the mesh to the MeshFilter
         meshFilter.mesh = mesh;
     }*/
+    void RotateArmsTowardsObjects()
+    {
+        // Rotate arm1 towards the nearest object
+        if (nearestObject != null && arm1 != null)
+        {
+            Vector3 direction = (nearestObject.transform.position - arm1.transform.position).normalized; // Calculate direction to nearest object
+            if (direction != Vector3.zero) // Ensure direction is not zero
+            {
+                float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg + arm1RotationOffset.z; // Get angle in degrees with offset
+                Quaternion lookRotation = Quaternion.Euler(0, 0, angle); // Create rotation only on Z-axis
+                arm1.transform.rotation = Quaternion.Slerp(arm1.transform.rotation, lookRotation, Time.deltaTime * arm1RotationSpeed); // Smoothly rotate arm1 towards nearest object
+            }
+        }
+
+        // Rotate arm2 towards the second nearest object
+        if (secondNearestObject != null && arm2 != null)
+        {
+            Vector3 direction = (secondNearestObject.transform.position - arm2.transform.position).normalized; // Calculate direction to second nearest object
+            if (direction != Vector3.zero) // Ensure direction is not zero
+            {
+                float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg + arm2RotationOffset.z; // Get angle in degrees with offset
+                Quaternion lookRotation = Quaternion.Euler(0, 0, angle); // Create rotation only on Z-axis
+                arm2.transform.rotation = Quaternion.Slerp(arm2.transform.rotation, lookRotation, Time.deltaTime * arm2RotationSpeed); // Smoothly rotate arm2 towards second nearest object
+            }
+        }
+    }
+
     void DrawLineToNearestTarget()
     {
         if (objectsInRange.Count > 0) // Check if there are objects in range
@@ -161,6 +208,7 @@ public class Character : MonoBehaviour
             lineRenderer.SetPosition(1, transform.position); // Set end position to hide the line
         }
     }
+
     void CheckForObjectsInRange()
     {
         // Clear the list before checking
@@ -176,6 +224,24 @@ public class Character : MonoBehaviour
             {
                 objectsInRange.Add(obj); // Add to the list if within range
             }
+        }
+        
+        if (objectsInRange.Count > 0) // Check if there are objects in range
+        {
+            nearestObject = objectsInRange.OrderBy(obj => Vector3.Distance(transform.position, obj.transform.position)).First(); // Find the nearest object
+            secondNearestObject = objectsInRange.OrderBy(obj => Vector3.Distance(transform.position, obj.transform.position)).Skip(1).FirstOrDefault(); // Find the second nearest object
+            
+            // Activate arms if objects are in range
+            if (arm1 != null) arm1.SetActive(true);
+            if (arm2 != null) arm2.SetActive(true);
+        }
+        else
+        {
+            nearestObject = null; // Reset if no objects in range
+            secondNearestObject = null; // Reset if no objects in range
+            // No objects, deactivate arms
+            if (arm1 != null) arm1.SetActive(false);
+            if (arm2 != null) arm2.SetActive(false);
         }
     }
 
